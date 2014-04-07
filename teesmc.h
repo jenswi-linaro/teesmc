@@ -27,8 +27,7 @@
 #ifndef TEESMC_H
 #define TEESMC_H
 
-#include <stdint.h>
-
+#ifndef ASM
 /*
  * Trusted OS SMC interface.
  *
@@ -90,6 +89,7 @@
 #define TEESMC_OS_CMD_OPEN_SESSION	0
 #define TEESMC_OS_CMD_INVOKE_COMMAND	1
 #define TEESMC_OS_CMD_CLOSE_SESSION	2
+#define TEESMC_OS_CMD_CANCEL		3
 
 /**
  * struct teesmc32_param_memref - memory reference
@@ -170,7 +170,8 @@ union teesmc64_param {
 /**
  * struct teesmc32_arg - SMC argument for Trusted OS
  * @os_cmd: OS Command, one of TEESMC_OS_CMD_*
- * @ta_func: Trusted Application function, specific to the Trusted Application
+ * @ta_func: Trusted Application function, specific to the Trusted Application,
+ *	     used if os_cmd == TEESMC_OS_CMD_INVOKE_COMMAND
  * @session: In parameter for all TEESMC_OS_CMD_* but
  *	     TEESMC_OS_CMD_OPEN_SESSION
  * @ret: return value
@@ -227,7 +228,7 @@ struct teesmc32_arg {
  * Returns a pointer to the param_attrs array inside a struct teesmc32_arg.
  */
 #define TEESMC32_GET_PARAM_ATTRS(x) \
-	(struct teesmc32_param *)(TEESMC32_GET_PARAMS(x) + (x)->num_params)
+	(uint8_t *)(TEESMC32_GET_PARAMS(x) + (x)->num_params)
 
 /**
  * TEESMC32_GET_ARG_SIZE - return size of struct teesmc32_arg
@@ -297,7 +298,7 @@ struct teesmc64_arg {
  * Returns a pointer to the param_attrs array inside a struct teesmc64_arg.
  */
 #define TEESMC64_GET_PARAM_ATTRS(x) \
-	(struct teesmc64_param *)(TEESMC64_GET_PARAMS(x) + (x)->num_params)
+	(uint8_t *)(TEESMC64_GET_PARAMS(x) + (x)->num_params)
 
 /**
  * TEESMC64_GET_ARG_SIZE - return size of struct teesmc64_arg
@@ -333,6 +334,8 @@ struct teesmc_meta_open_session {
 	uint8_t clnt_uuid[TEESMC_UUID_LEN];
 	uint32_t clnt_login;
 };
+
+#endif /*!ASM*/
 
 /*
  *******************************************************************************
