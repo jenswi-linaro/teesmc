@@ -68,7 +68,7 @@
  * to the Trusted Application.
  *
  * One example of this is a struct teesmc_meta_open_session which
- * is added to TEESMC{32,64}_OS_CMD_OPEN_SESSION.
+ * is added to TEESMC{32,64}_CMD_OPEN_SESSION.
  */
 #define TEESMC_ATTR_META		0x8
 
@@ -86,10 +86,10 @@
 #define TEESMC_ATTR_CACHE_SHIFT		4
 #define TEESMC_ATTR_CACHE_MASK		0xf
 
-#define TEESMC_OS_CMD_OPEN_SESSION	0
-#define TEESMC_OS_CMD_INVOKE_COMMAND	1
-#define TEESMC_OS_CMD_CLOSE_SESSION	2
-#define TEESMC_OS_CMD_CANCEL		3
+#define TEESMC_CMD_OPEN_SESSION	0
+#define TEESMC_CMD_INVOKE_COMMAND	1
+#define TEESMC_CMD_CLOSE_SESSION	2
+#define TEESMC_CMD_CANCEL		3
 
 /**
  * struct teesmc32_param_memref - memory reference
@@ -169,26 +169,26 @@ union teesmc64_param {
 
 /**
  * struct teesmc32_arg - SMC argument for Trusted OS
- * @os_cmd: OS Command, one of TEESMC_OS_CMD_*
+ * @cmd: Command, one of TEESMC_CMD_*
  * @ta_func: Trusted Application function, specific to the Trusted Application,
- *	     used if os_cmd == TEESMC_OS_CMD_INVOKE_COMMAND
- * @session: In parameter for all TEESMC_OS_CMD_* but
- *	     TEESMC_OS_CMD_OPEN_SESSION
+ *	     used if cmd == TEESMC_CMD_INVOKE_COMMAND
+ * @session: In parameter for all TEESMC_CMD_* except
+ *	     TEESMC_CMD_OPEN_SESSION where it's an output paramter instead
  * @ret: return value
  * @ret_origin: origin of the return value
  * @num_params: number of parameters supplied to the OS Command
  * @params: the parameters supplied to the OS Command
  * @param_attr: attributes of the supplied parameters
  *
- * All normal SMC calls to Trusted OS uses this struct. If os_cmd requires
+ * All normal SMC calls to Trusted OS uses this struct. If cmd requires
  * further information than what these field holds it can be passed as a
  * parameter tagged as meta (setting the TEESMC_ATTR_META bit in
- * corresponding param_attrs). This is used for TEESMC_OS_CMD_OPEN_SESSION
+ * corresponding param_attrs). This is used for TEESMC_CMD_OPEN_SESSION
  * to pass a struct teesmc32_meta_open_session which is needed find the
  * Trusted Application and to indicate the credentials of the client.
  */
 struct teesmc32_arg {
-	uint32_t os_cmd;
+	uint32_t cmd;
 	uint32_t ta_func;
 	uint32_t session;
 	uint32_t ret;
@@ -245,10 +245,10 @@ struct teesmc32_arg {
 
 /**
  * struct teesmc64_arg - SMC argument for Trusted OS
- * @os_cmd: OS Command, one of TEESMC_OS_CMD_*
+ * @cmd: OS Command, one of TEESMC_CMD_*
  * @ta_func: Trusted Application function, specific to the Trusted Application
- * @session: In parameter for all TEESMC_OS_CMD_* but
- *	     TEESMC_OS_CMD_OPEN_SESSION
+ * @session: In parameter for all TEESMC_CMD_* but
+ *	     TEESMC_CMD_OPEN_SESSION
  * @ret: return value
  * @ret_origin: origin of the return value
  * @num_params: number of parameters supplied to the OS Command
@@ -258,7 +258,7 @@ struct teesmc32_arg {
  * See description of struct teesmc32_arg.
  */
 struct teesmc64_arg {
-	uint64_t os_cmd;
+	uint64_t cmd;
 	uint64_t ta_func;
 	uint64_t session;
 	uint64_t ret;
@@ -317,15 +317,15 @@ struct teesmc64_arg {
 
 /**
  * struct teesmc_meta_open_session - additional parameters for
- *				     TEESMC32_OS_CMD_OPEN_SESSION and
- *				     TEESMC64_OS_CMD_OPEN_SESSION
+ *				     TEESMC32_CMD_OPEN_SESSION and
+ *				     TEESMC64_CMD_OPEN_SESSION
  * @uuid: UUID of the Trusted Application
  * @clnt_uuid: UUID of client
  * @clnt_login: Login class of client, TEE_LOGIN_* if being Global Platform
  *		compliant
  *
  * This struct is passed in the first parameter as an input memref tagged
- * as meta on an TEESMC{32,64}_OS_CMD_OPEN_SESSION os_cmd. It's important
+ * as meta on an TEESMC{32,64}_CMD_OPEN_SESSION cmd. It's important
  * that it really is the first parameter to make it easy for an eventual
  * hypervisor to inspect and possibly update clnt_* values.
  */
@@ -334,6 +334,7 @@ struct teesmc_meta_open_session {
 	uint8_t clnt_uuid[TEESMC_UUID_LEN];
 	uint32_t clnt_login;
 };
+
 
 #endif /*!ASM*/
 
@@ -456,23 +457,29 @@ struct teesmc_meta_open_session {
  * r7/x7	Hypervisor Client ID register
  *
  * Normal return register usage:
- * r0/x0	Return value, TEESMC_RETURN_TRUSTED_OS_*
+ * r0/x0	Return value, TEESMC_RETURN_*
  * r1-3/x1-3	Not used
+ * r4-7/x4-7	Preserved
+ *
+ * Ebusy return register usage:
+ * r0/x0	Return value, TEESMC_RETURN_EBUSY
+ * r1-3/x1-3	Preserved
+ * r4-7/x4-7	Preserved
  *
  * RPC return register usage:
- * r0/x0	Return value, TEESMC_RETURN_TRUSTED_OS_RPC
- * r1/x1	RPC type, TEESMC_RPC_REQUEST_*
- * r2-3/x2-3	Opaque resume information used by Trusted OS
+ * r0/x0	Return value, TEESMC_RETURN_IS_RPC(val)
+ * r1-2/x1-2	RPC parameters
+ * r3-7/x3-7	Resume information, must be preserved
  *
  * Possible return values:
  * TEESMC_RETURN_UNKNOWN_FUNCTION	Trusted OS does not recognize this
  *					function.
- * TEESMC_RETURN_TRUSTED_OS_OK		Call completed, result updated in
+ * TEESMC_RETURN_OK			Call completed, result updated in
  *					the previously supplied struct
  *					teesmc32_arg.
- * TEESMC_RETURN_TRUSTED_OS_RPC		Call suspended by RPC call to normal
+ * TEESMC_RETURN_EBUSY			Trusted OS busy, try again later.
+ * TEESMC_RETURN_IS_RPC()		Call suspended by RPC call to normal
  *					world.
- * TEESMC_RETURN_TRUSTED_OS_EBUSY	Trusted OS busy, try again later.
  */
 #define TEESMC_FUNCID_CALL_WITH_ARG	2
 #define TEESMC32_CALL_WITH_ARG \
@@ -505,20 +512,20 @@ struct teesmc_meta_open_session {
  *		TEESMC32_CALL_RETURN_FROM_RPC or
  *		TEESMC32_FASTCALL_RETURN_FROM_RPC
  * r1-3/x1-3	Value of r1-3/x1-3 when TEESMC32_CALL_WITH_ARG returned
- *		TEESMC_RETURN_TRUSTED_OS_RPC in r0/x0
+ *		TEESMC_RETURN_RPC in r0/x0
  *
  * Return register usage is the same as for TEESMC32_CALL_WITH_ARG above.
  *
  * Possible return values
  * TEESMC_RETURN_UNKNOWN_FUNCTION	Trusted OS does not recognize this
  *					function.
- * TEESMC_RETURN_TRUSTED_OS_OK		Original call completed, result
+ * TEESMC_RETURN_OK		Original call completed, result
  *					updated in the previously supplied.
  *					struct teesmc32_arg
- * TEESMC_RETURN_TRUSTED_OS_RPC		Call suspended by RPC call to normal
+ * TEESMC_RETURN_RPC		Call suspended by RPC call to normal
  *					world.
- * TEESMC_RETURN_TRUSTED_OS_EBUSY	Trusted OS busy, try again later.
- * TEESMC_RETURN_TRUSTED_OS_ERESUME	Resume failed, the opaque resume
+ * TEESMC_RETURN_EBUSY	Trusted OS busy, try again later.
+ * TEESMC_RETURN_ERESUME	Resume failed, the opaque resume
  *					information was corrupt.
  */
 #define TEESMC_FUNCID_RETURN_FROM_RPC	3
@@ -555,7 +562,7 @@ struct teesmc_meta_open_session {
  *
  * Call register usage:
  * r0/x0	SMC Function ID, TEESMC32_CALL_HANDLE_FIQ
- * r1-7/x1-7	Not used, but should be preserved
+ * r1-7/x1-7	Not used, but must be preserved
  *
  * Return register usage:
  * Note used
@@ -565,17 +572,115 @@ struct teesmc_meta_open_session {
 	TEESMC_CALL_VAL(TEESMC_32, TEESMC_FAST_CALL, TEESMC_OWNER_TRUSTED_OS, \
 			TEESMC_FUNCID_CALL_HANDLE_FIQ)
 
+#define TEESMC_RETURN_RPC_PREFIX_MASK	0xFFFF0000
+#define TEESMC_RETURN_RPC_PREFIX	0xFFFF0000
+#define TEESMC_RETURN_RPC_FUNC_MASK	0x0000FFFF
+
+#define TEESMC_RETURN_GET_RPC_FUNC(ret)	((ret) & TEESMC_RETURN_RPC_FUNC_MASK)
+
+#define TEESMC_RPC_VAL(func)		((func) | TEESMC_RETURN_RPC_PREFIX)
+
+/*
+ * Allocate memory for RPC parameter passing. There's two kinds of
+ * memory, argument memory and payload memory. Argument memory is used
+ * to hold a struct teesmc32_arg. Payload memory is used to hold the
+ * memory referred to by struct teesmc32_param_memref.
+ *
+ * "Call" register usage:
+ * r0/x0	This value, TEESMC_RETURN_RPC_ALLOC
+ * r1/x1	Size in bytes of required argument memory
+ * r2/x2	Size in bytes of required payload memory
+ * r3-7/x3-7	Resume information, must be preserved
+ *
+ * "Return" register usage:
+ * r0/x0	SMC Function ID, TEESMC32_CALL_RETURN_FROM_RPC if it was an
+ *		AArch32 SMC return or TEESMC64_CALL_RETURN_FROM_RPC for
+ *		AArch64 SMC return
+ * r1/x1	Physical pointer to allocated argument memory, 0 if size
+ *		was 0 or if memory can't be allocated
+ * r2/x2	Physical pointer to allocated payload memory, 0 if size
+ *		was 0 or if memory can't be allocated
+ * r3-7/x3-7	Preserved
+ */
+#define TEESMC_RPC_FUNC_ALLOC		0
+#define TEESMC_RETURN_RPC_ALLOC		TEESMC_RPC_VAL(TEESMC_RPC_FUNC_ALLOC)
+
+/*
+ * Free memory previously allocated by TEESMC_RETURN_RPC_ALLOC, argument
+ * and payload pointer must not be exchaged.
+ *
+ * "Call" register usage:
+ * r0/x0	This value, TEESMC_RETURN_RPC_FREE
+ * r1/x1	Physical pointer to previously allocated argument memory, or 0
+ * r2/x2	Physical pointer to previously allocated payload memory, or 0
+ * r3-7/x3-7	Resume information, must be preserved
+ *
+ * "Return" register usage:
+ * r0/x0	SMC Function ID, TEESMC32_CALL_RETURN_FROM_RPC if it was an
+ *		AArch32 SMC return or TEESMC64_CALL_RETURN_FROM_RPC for
+ *		AArch64 SMC return
+ * r1-2/x1-2	Not used
+ * r3-7/x3-7	Preserved
+ */
+#define TEESMC_RPC_FUNC_FREE		1
+#define TEESMC_RETURN_RPC_FREE		TEESMC_RPC_VAL(TEESMC_RPC_FUNC_FREE)
+
+/*
+ * Deliver an IRQ in normal world.
+ *
+ * "Call" register usage:
+ * r0/x0	TEESMC_RETURN_RPC_IRQ
+ * r1-7/x1-7	Resume information, must be preserved
+ *
+ * "Return" register usage:
+ * r0/x0	SMC Function ID, TEESMC32_CALL_RETURN_FROM_RPC if it was an
+ *		AArch32 SMC return or TEESMC64_CALL_RETURN_FROM_RPC for
+ *		AArch64 SMC return
+ * r1-7/x1-7	Preserved
+ */
+#define TEESMC_RPC_FUNC_IRQ		2
+#define TEESMC_RETURN_RPC_IRQ		TEESMC_RPC_VAL(TEESMC_RPC_FUNC_IRQ)
+
+/*
+ * Do an RPC request. The supplied struct teesmc{32,64}_arg tells which
+ * request to do and the paramters for the request. The following fields
+ * are used (the rest are unused):
+ * - cmd		the Request ID
+ * - ret		return value of the request, filled in by normal world
+ * - num_params		number of parameters for the request
+ * - params		the parameters
+ * - param_attrs	attributes of the parameters
+ *
+ * "Call" register usage:
+ * r0/x0	TEESMC_RETURN_RPC_CMD
+ * r1/x1	Physical pointer to a struct teesmc32_arg if returning from
+ *		a AArch32 SMC or a struct teesmc64_arg if returning from a
+ *		AArch64 SMC, must be preserved, only the data should
+ *		be updated
+ * r2-7/x2-7	Resume information, must be preserved
+ *
+ * "Return" register usage:
+ * r0/x0	SMC Function ID, TEESMC32_CALL_RETURN_FROM_RPC if it was an
+ *		AArch32 SMC return or TEESMC64_CALL_RETURN_FROM_RPC for
+ *		AArch64 SMC return
+ * r1-7/x1-7	Preserved
+ */
+#define TEESMC_RPC_FUNC_CMD		3
+#define TEESMC_RETURN_RPC_CMD		TEESMC_RPC_VAL(TEESMC_RPC_FUNC_CMD)
+
+
 /* Returned in r0 */
 #define TEESMC_RETURN_UNKNOWN_FUNCTION	0xFFFFFFFF
 
 /* Returned in r0 only from Trusted OS functions */
-#define TEESMC_RETURN_TRUSTED_OS_OK	0x0
-#define TEESMC_RETURN_TRUSTED_OS_RPC	0x1
-#define TEESMC_RETURN_TRUSTED_OS_EBUSY	0x3
-#define TEESMC_RETURN_TRUSTED_OS_ERESUME 0x4
+#define TEESMC_RETURN_OK		0x0
+#define TEESMC_RETURN_EBUSY		0x1
+#define TEESMC_RETURN_ERESUME		0x2
+#define TEESMC_RETURN_IS_RPC(ret) \
+	(((ret) & TEESMC_RETURN_RPC_PREFIX_MASK) == TEESMC_RETURN_RPC_PREFIX)
 
 /*
- * Returned in r1 by Trusted OS functions if r0 = TEESMC_RETURN_TRUSTED_OS_RPC
+ * Returned in r1 by Trusted OS functions if r0 = TEESMC_RETURN_RPC
  */
 #define TEESMC_RPC_REQUEST_IRQ		0x0
 
