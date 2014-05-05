@@ -83,10 +83,13 @@
 #define TEESMC_ATTR_CACHE_O_WRITE_THR	0x4
 #define TEESMC_ATTR_CACHE_O_WRITE_BACK	0x8
 
+#define TEESMC_ATTR_CACHE_DEFAULT	(TEESMC_ATTR_CACHE_I_WRITE_BACK | \
+					 TEESMC_ATTR_CACHE_O_WRITE_BACK)
+
 #define TEESMC_ATTR_CACHE_SHIFT		4
 #define TEESMC_ATTR_CACHE_MASK		0xf
 
-#define TEESMC_CMD_OPEN_SESSION	0
+#define TEESMC_CMD_OPEN_SESSION		0
 #define TEESMC_CMD_INVOKE_COMMAND	1
 #define TEESMC_CMD_CLOSE_SESSION	2
 #define TEESMC_CMD_CANCEL		3
@@ -224,11 +227,12 @@ struct teesmc32_arg {
  * TEESMC32_GET_PARAM_ATTRS - return pointer param_attrs array
  *
  * @x: Pointer to a struct teesmc32_arg
+ * @num_params: the content of the num_params field of struct teesmc32_arg
  *
  * Returns a pointer to the param_attrs array inside a struct teesmc32_arg.
  */
-#define TEESMC32_GET_PARAM_ATTRS(x) \
-	(uint8_t *)(TEESMC32_GET_PARAMS(x) + (x)->num_params)
+#define TEESMC32_GET_PARAM_ATTRS(x, num_params) \
+	(uint8_t *)(TEESMC32_GET_PARAMS(x) + (num_params))
 
 /**
  * TEESMC32_GET_ARG_SIZE - return size of struct teesmc32_arg
@@ -294,11 +298,12 @@ struct teesmc64_arg {
  * TEESMC64_GET_PARAM_ATTRS - return pointer param_attrs array
  *
  * @x: Pointer to a struct teesmc64_arg
+ * @num_params: the content of the num_params field of struct teesmc64_arg
  *
  * Returns a pointer to the param_attrs array inside a struct teesmc64_arg.
  */
-#define TEESMC64_GET_PARAM_ATTRS(x) \
-	(uint8_t *)(TEESMC64_GET_PARAMS(x) + (x)->num_params)
+#define TEESMC64_GET_PARAM_ATTRS(x, num_params) \
+	(uint8_t *)(TEESMC64_GET_PARAMS(x) + (num_params))
 
 /**
  * TEESMC64_GET_ARG_SIZE - return size of struct teesmc64_arg
@@ -478,6 +483,9 @@ struct teesmc_meta_open_session {
  *					the previously supplied struct
  *					teesmc32_arg.
  * TEESMC_RETURN_EBUSY			Trusted OS busy, try again later.
+ * TEESMC_RETURN_EBADADDR		Bad physcial pointer to struct
+ *					teesmc32_arg.
+ * TEESMC_RETURN_EBADCMD		Bad/unknown cmd in struct teesmc32_arg
  * TEESMC_RETURN_IS_RPC()		Call suspended by RPC call to normal
  *					world.
  */
@@ -519,13 +527,13 @@ struct teesmc_meta_open_session {
  * Possible return values
  * TEESMC_RETURN_UNKNOWN_FUNCTION	Trusted OS does not recognize this
  *					function.
- * TEESMC_RETURN_OK		Original call completed, result
+ * TEESMC_RETURN_OK			Original call completed, result
  *					updated in the previously supplied.
  *					struct teesmc32_arg
- * TEESMC_RETURN_RPC		Call suspended by RPC call to normal
+ * TEESMC_RETURN_RPC			Call suspended by RPC call to normal
  *					world.
- * TEESMC_RETURN_EBUSY	Trusted OS busy, try again later.
- * TEESMC_RETURN_ERESUME	Resume failed, the opaque resume
+ * TEESMC_RETURN_EBUSY			Trusted OS busy, try again later.
+ * TEESMC_RETURN_ERESUME		Resume failed, the opaque resume
  *					information was corrupt.
  */
 #define TEESMC_FUNCID_RETURN_FROM_RPC	3
@@ -676,6 +684,8 @@ struct teesmc_meta_open_session {
 #define TEESMC_RETURN_OK		0x0
 #define TEESMC_RETURN_EBUSY		0x1
 #define TEESMC_RETURN_ERESUME		0x2
+#define TEESMC_RETURN_EBADADDR		0x3
+#define TEESMC_RETURN_EBADCMD		0x4
 #define TEESMC_RETURN_IS_RPC(ret) \
 	(((ret) & TEESMC_RETURN_RPC_PREFIX_MASK) == TEESMC_RETURN_RPC_PREFIX)
 
